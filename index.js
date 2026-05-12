@@ -194,6 +194,12 @@ app.get('/share/:slug', async (req, res) => {
     }
 });
 
+// --- ENDPOINT VERIFIKASI GOOGLE ---
+app.get('/google04296f569490c7f3.html', (req, res) => {
+    // Mengirimkan konten verifikasi Google
+    res.send('google-site-verification: google04296f569490c7f3.html');
+});
+
 app.listen(PORT, () => {
     console.log(`Hacker Proxy Otomatis di http://localhost:${PORT}`);
     console.log(`Endpoint 1: http://localhost:${PORT}/api/songs`);
