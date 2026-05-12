@@ -92,6 +92,119 @@ app.get('/api/songs/:slug', async (req, res) => {
     }
 });
 
+// --- PERBAIKAN FUNGSI GET ALL SONGS ---
+async function getAllSongs() {
+    const targetUrl = `https://bimachord.free.nf/api/songs`; 
+    try {
+        const data = await fetchWithBypass(targetUrl);
+        
+        // DEBUG: Lihat di terminal, apakah data.data, data.songs, atau langsung array?
+        // console.log("Isi Data API:", data); 
+
+        // Cek berbagai kemungkinan struktur JSON
+        if (Array.isArray(data)) {
+            return data;
+        } else if (data && Array.isArray(data.data)) {
+            return data.data; // Biasanya Laravel atau API standar membungkus di 'data'
+        } else if (data && Array.isArray(data.songs)) {
+            return data.songs; // Jika dibungkus di 'songs'
+        } else {
+            console.error("Struktur data tidak dikenali atau kosong:", data);
+            return [];
+        }
+    } catch (error) {
+        console.error("Gagal mengambil daftar lagu untuk sitemap:", error.message);
+        return [];
+    }
+}
+
+// --- ENDPOINT SITEMAP ---
+app.get('/sitemap.xml', async (req, res) => {
+    const mainDomain = 'https://bimachord.github.io';
+    
+    try {
+        const songs = await getAllSongs();
+
+        let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+        <loc>${mainDomain}/</loc>
+        <changefreq>daily</changefreq>
+        <priority>1.0</priority>
+    </url>`;
+
+        if (songs.length > 0) {
+            songs.forEach(song => {
+                // Pastikan song.slug ada agar tidak error
+                if (song.slug) {
+                    xml += `
+    <url>
+        <loc>${mainDomain}/lagu/lirik.html?slug=${song.slug}</loc>
+        <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.8</priority>
+    </url>`;
+                }
+            });
+        }
+
+        xml += `\n</urlset>`;
+
+        res.header('Content-Type', 'application/xml');
+        res.status(200).send(xml);
+    } catch (err) {
+        res.status(500).send("Error generating sitemap");
+    }
+});
+
+app.get('/share/:slug', async (req, res) => {
+    const slug = req.params.slug;
+    
+    // 1. URL Template dari GitHub Pages kamu
+    const templateUri = 'https://bimachord.github.io/lagu/lirik.html'; 
+    // 2. URL API data lagu
+    const apiUri = `https://bimachord.free.nf/api/songs/${slug}`;
+
+    try {
+        // Ambil data lagu dan isi file HTML secara bersamaan agar cepat
+        const [apiRes, templateRes] = await Promise.all([
+            fetchWithBypass(apiUri),
+            axios.get(templateUri)
+        ]);
+
+        const song = apiRes.data[0];
+        let html = templateRes.data; // Ini adalah isi teks dari file lirik.html di GitHub
+
+        if (!song) {
+            return res.redirect('https://bimachord.github.io');
+        }
+
+        // Data untuk SEO
+        const title = `Chord ${song.title} - ${song.singer}`;
+        const description = `Lirik dan Chord gitar lagu Bima ${song.title}. Mainkan musik Bima dengan mudah di BimaChord.`;
+        const githubUrl = `https://bimachord.github.io/lagu/lirik.html?slug=${song.slug}`;
+        const imageUrl = 'https://bimachord.github.io/assets/img/og-image.jpg';
+
+        // 3. Proses "Sakti" Replace Placeholder
+        const finalHtml = html
+            .replace(/__TITLE__/g, title)
+            .replace(/__DESCRIPTION__/g, description)
+            .replace(/__URL__/g, githubUrl)
+            .replace(/__IMAGE__/g, imageUrl)
+            // Jika di lirik.html kamu ada script redirect, pastikan URL-nya mengarah ke GitHub
+            .replace(/window\.location\.replace\(.*\)/g, `window.location.replace("${githubUrl}")`);
+
+        // 4. Kirim hasilnya sebagai HTML
+        res.header('Content-Type', 'text/html');
+        res.send(finalHtml);
+
+    } catch (error) {
+        console.error("Gagal memproses template remote:", error.message);
+        // Jika gagal, lempar user langsung ke link tujuannya saja
+        res.redirect(`https://bimachord.github.io/lagu/lirik.html?slug=${slug}`);
+    }
+});
+
 app.listen(PORT, () => {
     console.log(`Hacker Proxy Otomatis di http://localhost:${PORT}`);
     console.log(`Endpoint 1: http://localhost:${PORT}/api/songs`);
