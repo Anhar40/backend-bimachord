@@ -158,50 +158,39 @@ app.get('/sitemap.xml', async (req, res) => {
 });
 
 app.get('/share/:slug', async (req, res) => {
-    const slug = req.params.slug;
-    
-    // 1. URL Template dari GitHub Pages kamu
-    const templateUri = 'https://bimachord.github.io/lagu/lirik.html'; 
-    // 2. URL API data lagu
+    const { slug } = req.params;
     const apiUri = `https://bimachord.free.nf/api/songs/${slug}`;
+    const destination = `https://bimachord.github.io/lagu/lirik.html?slug=${slug}`;
 
     try {
-        // Ambil data lagu dan isi file HTML secara bersamaan agar cepat
-        const [apiRes, templateRes] = await Promise.all([
-            fetchWithBypass(apiUri),
-            axios.get(templateUri)
-        ]);
+        const response = await fetchWithBypass(apiUri);
+        const song = response.data && response.data[0] ? response.data[0] : null;
 
-        const song = apiRes.data[0];
-        let html = templateRes.data; // Ini adalah isi teks dari file lirik.html di GitHub
+        if (!song) return res.redirect(destination);
 
-        if (!song) {
-            return res.redirect('https://bimachord.github.io');
-        }
-
-        // Data untuk SEO
         const title = `Chord ${song.title} - ${song.singer}`;
-        const description = `Lirik dan Chord gitar lagu Bima ${song.title}. Mainkan musik Bima dengan mudah di BimaChord.`;
-        const githubUrl = `https://bimachord.github.io/lagu/lirik.html?slug=${song.slug}`;
-        const imageUrl = 'https://bimachord.github.io/assets/img/og-image.jpg';
+        const desc = `Lirik dan Kunci Gitar lagu Bima ${song.title}. Mainkan musik daerah Bima di BimaChord.`;
 
-        // 3. Proses "Sakti" Replace Placeholder
-        const finalHtml = html
-            .replace(/__TITLE__/g, title)
-            .replace(/__DESCRIPTION__/g, description)
-            .replace(/__URL__/g, githubUrl)
-            .replace(/__IMAGE__/g, imageUrl)
-            // Jika di lirik.html kamu ada script redirect, pastikan URL-nya mengarah ke GitHub
-            .replace(/window\.location\.replace\(.*\)/g, `window.location.replace("${githubUrl}")`);
-
-        // 4. Kirim hasilnya sebagai HTML
-        res.header('Content-Type', 'text/html');
-        res.send(finalHtml);
-
+        // Kirim HANYA meta tag dan script redirect
+        res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+    <title>${title}</title>
+    <meta name="description" content="${desc}">
+    <meta property="og:title" content="${title}">
+    <meta property="og:description" content="${desc}">
+    <meta property="og:image" content="https://bimachord.github.io/assets/img/og-image.jpg">
+    <meta property="og:url" content="${destination}">
+    <meta property="og:type" content="article">
+    <meta name="twitter:card" content="summary_large_image">
+    <script>window.location.replace("${destination}");</script>
+</head>
+<body></body>
+</html>
+        `);
     } catch (error) {
-        console.error("Gagal memproses template remote:", error.message);
-        // Jika gagal, lempar user langsung ke link tujuannya saja
-        res.redirect(`https://bimachord.github.io/lagu/lirik.html?slug=${slug}`);
+        res.redirect(destination);
     }
 });
 
